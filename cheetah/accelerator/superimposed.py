@@ -5,6 +5,9 @@ from cheetah.accelerator import Segment
 from cheetah.accelerator.element import Element
 from cheetah.particles.beam import Beam
 from cheetah.particles.species import Species
+from cheetah.utils.unique_name_generator import UniqueNameGenerator
+
+generate_unique_name = UniqueNameGenerator(prefix="unnamed_element")
 
 
 class SuperimposedElement(Element):
@@ -40,15 +43,25 @@ class SuperimposedElement(Element):
         if isinstance(superimposed_element, Segment):
             self.superimposed_element = superimposed_element
         elif isinstance(superimposed_element, Element):
-            self.superimposed_element = Segment(elements=[superimposed_element])
+            self.superimposed_element = Segment(
+                elements=[superimposed_element],
+                name=f"{superimposed_element.name}_segment",
+            )
         else:
             raise TypeError(
                 f"superimposed_element must be a Segment or Element subclass, "
                 f"got {type(superimposed_element).__name__}"
             )
-        # self.name = (self.base_element.name
-        #             if self.base_element.name
-        #             is not None else self.name)
+
+    # self._buffers["length"] = self.base_element._buffers["length"]
+
+    def __setattr__(self, name, value):
+        super().__setattr__(name, value)
+
+        if name == "length" and hasattr(self, "base_element"):
+            base = getattr(self, "base_element", None)
+            if base is not None:
+                base.length = self.length
 
     def track(self, incoming: Beam) -> Beam:
         if self.is_skippable:
@@ -92,34 +105,43 @@ class SuperimposedElement(Element):
 
     @property
     def subelements(self) -> list[Element]:
-        base_split = self.base_element.split(self.base_element.length / 2)
-        base_split[0].name = f"{self.base_element.name}#0"
-        base_split[1].name = f"{self.base_element.name}#1"
+        half_length = self.base_element.length / 2
+        base = self.base_element
+
+        kwargs = {
+            feature: getattr(base, feature)
+            for feature in base.defining_features
+            if feature != "length" and feature != "name"
+        }
+
+        first = type(base)(
+            length=half_length,
+            name=f"{base.name}#0",
+            sanitize_name=False,
+            dtype=base.length.dtype,
+            device=base.length.device,
+            **kwargs,
+        )
+        second = type(base)(
+            length=half_length,
+            name=f"{base.name}#1",
+            sanitize_name=False,
+            dtype=base.length.dtype,
+            device=base.length.device,
+            **kwargs,
+        )
 
         if isinstance(self.superimposed_element, Segment):
-            return (
-                torch.nn.ModuleList([base_split[0]])
-                + self.superimposed_element.elements
-                + torch.nn.ModuleList([base_split[1]])
-            )
-        else:
-            raise TypeError(
-                f"superimposed_element must be a Segment or Element subclass, "
-                f"got {type(self.superimposed_element).__name__}"
-            )
+            return [first, *self.superimposed_element.elements, second]
+
+        raise TypeError(
+            f"superimposed_element must be a Segment or Element subclass, "
+            f"got {type(self.superimposed_element).__name__}"
+        )
 
     @property
     def is_skippable(self) -> bool:
         return all([el.is_skippable for el in self.subelements])
-
-    @property
-    def length(self) -> float:
-        return self.base_element.length
-
-    def split(self, resolution):
-        raise NotImplementedError(
-            "Splitting a SuperimposedElement is not supported yet."
-        )
 
     def plot(
         self, s: float, vector_idx: tuple | None = None, ax: plt.Axes | None = None
@@ -128,4 +150,4 @@ class SuperimposedElement(Element):
 
     @property
     def defining_features(self) -> list[str]:
-        return ["base_element", "superimposed_element"]
+        return super().defining_features + ["base_element", "superimposed_element"]

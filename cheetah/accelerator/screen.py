@@ -79,6 +79,7 @@ class Screen(Element):
             "histogram",
             "kde",
             "cloud-in-cell",
+            "charge_deposition",
         ], f"Invalid method {method}. Must be 'histogram', 'kde', or 'cloud-in-cell'."
 
         self.register_buffer_or_parameter(

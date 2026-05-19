@@ -183,12 +183,7 @@ def parse_element(
     element_class = getattr(cheetah, lattice_dict["elements"][name][0])
     params = lattice_dict["elements"][name][1]
 
-    converted_params = {
-        key: nontorch2feature(value, device=device, dtype=dtype)
-        for key, value in params.items()
-    }
-
-    if isinstance(element, cheetah.SuperimposedElement):
+    if isinstance(element_class, cheetah.SuperimposedElement):
         base_element = parse_element(
             list(base_element_dict.keys())[0],
             {"elements": base_element_dict},

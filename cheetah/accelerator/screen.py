@@ -12,6 +12,7 @@ from cheetah.utils import (
     cache_transfer_map,
     cloud_in_cell_charge_deposition,
     kde_histogram_2d,
+    deposit_charge_cic_2d,
 )
 
 generate_unique_name = UniqueNameGenerator(prefix="unnamed_element")
@@ -335,6 +336,21 @@ class Screen(Element):
                     ),
                     charges=broadcasted_weights,
                 ).mT
+            elif self.method == "charge_deposition":
+                weights = (
+                    read_beam.particle_charges.abs() * read_beam.survival_probabilities
+                )
+                broadcasted_x, broadcasted_y, broadcasted_weights = (
+                    torch.broadcast_tensors(read_beam.x, read_beam.y, weights)
+                )
+                image = deposit_charge_cic_2d(
+                    x1=broadcasted_x,
+                    x2=broadcasted_y,
+                    bins1=self.pixel_bin_centers[0],
+                    bins2=self.pixel_bin_centers[1],
+                    weights=broadcasted_weights,
+                )
+
         else:
             raise TypeError(f"Read beam is of invalid type {type(read_beam)}")
 

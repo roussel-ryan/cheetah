@@ -183,7 +183,10 @@ def parse_element(
     element_class = getattr(cheetah, lattice_dict["elements"][name][0])
     params = lattice_dict["elements"][name][1]
 
-    if isinstance(element_class, cheetah.SuperimposedElement):
+    if element_class == cheetah.SuperimposedElement:
+        base_element_dict = params["base_element"]
+        superimposed_element_dict = params["superimposed_element"]
+
         base_element = parse_element(
             list(base_element_dict.keys())[0],
             {"elements": base_element_dict},

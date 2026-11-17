@@ -6,7 +6,12 @@ import torch
 from cheetah.accelerator.element import Element
 from cheetah.particles import Beam, ParticleBeam, Species
 from cheetah.track_methods import base_ttensor, drift_matrix
-from cheetah.utils import UniqueNameGenerator, bmadx, cache_transfer_map
+from cheetah.utils import (
+    UniqueNameGenerator,
+    bmadx,
+    cache_transfer_map,
+    merge_element_names,
+)
 
 generate_unique_name = UniqueNameGenerator(prefix="unnamed_element")
 
@@ -25,7 +30,7 @@ class Drift(Element):
     :param metadata: Dictionary of arbitrary, serialisable annotations attached to the
         element (e.g. control-system addresses or PVs). This information is *not* used
         in simulation and may contain any extra data the user wants to store along with
-        the lattice. See :doc:`/examples/including_metadata` for more information.
+        the lattice. See :doc:`/getting_started/control_systems` for more information.
     :param device: Device on which to create the element's tensors.
     :param dtype: Data type of the element's tensors.
     """
@@ -158,11 +163,28 @@ class Drift(Element):
             Drift(
                 self.length / num_splits,
                 tracking_method=self.tracking_method,
+                name=f"{self.name}_split_{i}",
+                sanitize_name=False,
+                metadata=self.metadata,
                 dtype=self.length.dtype,
                 device=self.length.device,
             )
             for i in range(num_splits)
         ]
+
+    def merge(self, other: "Drift") -> "Drift | None":
+        if not (self.tracking_method == other.tracking_method):
+            return None
+
+        return self.__class__(
+            length=self.length + other.length,
+            tracking_method=self.tracking_method,
+            name=merge_element_names(self.name, other.name),
+            sanitize_name=False,
+            metadata={**other.metadata, **self.metadata},
+            dtype=self.length.dtype,
+            device=self.length.device,
+        )
 
     def plot(
         self, s: float, vector_idx: tuple | None = None, ax: plt.Axes | None = None

@@ -345,10 +345,10 @@ def test_vectorized_screen_2d(BeamClass, method):
             cheetah.BPM,
             cheetah.CustomTransferMap,
             cheetah.Marker,
+            cheetah.Patch,
             cheetah.Screen,
             cheetah.Segment,
             cheetah.SpaceChargeKick,
-            cheetah.Superimposed,
         ),
     ),
 )
@@ -409,9 +409,9 @@ def test_vectorized_parameter_beam_creation():
     )
 
     assert beam.mu_x.shape == (2,)
-    assert torch.allclose(beam.mu_x, torch.tensor([2e-4, 3e-4]))
+    torch.testing.assert_close(beam.mu_x, torch.tensor([2e-4, 3e-4]))
     assert beam.sigma_x.shape == (2,)
-    assert torch.allclose(beam.sigma_x, torch.tensor([1e-5, 2e-5]))
+    torch.testing.assert_close(beam.sigma_x, torch.tensor([1e-5, 2e-5]))
 
 
 @pytest.mark.parametrize(

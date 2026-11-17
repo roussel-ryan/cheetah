@@ -23,7 +23,7 @@ class CustomTransferMap(Element):
     :param metadata: Dictionary of arbitrary, serialisable annotations attached to the
         element (e.g. control-system addresses or PVs). This information is *not* used
         in simulation and may contain any extra data the user wants to store along with
-        the lattice. See :doc:`/examples/including_metadata` for more information.
+        the lattice. See :doc:`/getting_started/control_systems` for more information.
     :param device: Device on which to create the element's tensors.
     :param dtype: Data type of the element's tensors.
     """
@@ -100,7 +100,13 @@ class CustomTransferMap(Element):
 
         combined_name = "combined_" + "_".join(element.name for element in elements)
 
-        return cls(tm, length=combined_length, name=combined_name, **factory_kwargs)
+        return cls(
+            tm,
+            length=combined_length,
+            name=combined_name,
+            sanitize_name=False,
+            **factory_kwargs,
+        )
 
     def first_order_transfer_map(
         self, energy: torch.Tensor, species: Species

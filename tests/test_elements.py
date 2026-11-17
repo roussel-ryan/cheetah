@@ -130,9 +130,7 @@ def test_particle_beam_tracking_with_device_and_dtype(element, device, dtype):
 
 @pytest.mark.for_every_element(
     "element",
-    xfail_if=lambda element: isinstance(
-        element, (cheetah.SpaceChargeKick, cheetah.TransverseDeflectingCavity)
-    )
+    xfail_if=lambda element: isinstance(element, cheetah.SpaceChargeKick)
     or (
         isinstance(
             element,
@@ -142,6 +140,7 @@ def test_particle_beam_tracking_with_device_and_dtype(element, device, dtype):
                 cheetah.Quadrupole,
                 cheetah.RBend,
                 cheetah.Sextupole,
+                cheetah.TransverseDeflectingCavity,
             ),
         )
         and element.tracking_method != "linear"
@@ -282,7 +281,7 @@ def test_transfer_map_cache_dtype_conversion():
 
     assert id(original_transfer_map) != id(converted_transfer_map)
     assert converted_transfer_map.dtype == torch.float64
-    assert torch.allclose(
+    torch.testing.assert_close(
         original_transfer_map.to(torch.float64), converted_transfer_map
     )
 
@@ -409,23 +408,25 @@ def test_consistency(element, beam_cls):
     #     pickle.dump(actual_outgoing_beam, f)
 
     assert actual_outgoing_beam.species.name == expected_outgoing_beam.species.name
-    assert torch.allclose(actual_outgoing_beam.energy, expected_outgoing_beam.energy)
-    assert torch.allclose(actual_outgoing_beam.s, expected_outgoing_beam.s)
+    torch.testing.assert_close(
+        actual_outgoing_beam.energy, expected_outgoing_beam.energy
+    )
+    torch.testing.assert_close(actual_outgoing_beam.s, expected_outgoing_beam.s)
     if isinstance(actual_outgoing_beam, cheetah.ParameterBeam):
-        assert torch.allclose(actual_outgoing_beam.mu, expected_outgoing_beam.mu)
-        assert torch.allclose(actual_outgoing_beam.cov, expected_outgoing_beam.cov)
-        assert torch.allclose(
+        torch.testing.assert_close(actual_outgoing_beam.mu, expected_outgoing_beam.mu)
+        torch.testing.assert_close(actual_outgoing_beam.cov, expected_outgoing_beam.cov)
+        torch.testing.assert_close(
             actual_outgoing_beam.total_charge, expected_outgoing_beam.total_charge
         )
     else:  # ParticleBeam
-        assert torch.allclose(
+        torch.testing.assert_close(
             actual_outgoing_beam.particles, expected_outgoing_beam.particles
         )
-        assert torch.allclose(
+        torch.testing.assert_close(
             actual_outgoing_beam.particle_charges,
             expected_outgoing_beam.particle_charges,
         )
-        assert torch.allclose(
+        torch.testing.assert_close(
             actual_outgoing_beam.survival_probabilities,
             expected_outgoing_beam.survival_probabilities,
         )
@@ -449,3 +450,36 @@ def test_element_dirty_name_warning(sanitize_name):
         with warnings.catch_warnings():
             warnings.simplefilter("error", DirtyNameWarning)
             _ = cheetah.Marker(name=dirty_name, sanitize_name=sanitize_name)
+
+
+@pytest.mark.for_every_element("element")
+def test_element_no_internal_dirty_name_warning(element):
+    """Test that no internal `DirtyNameWarning` are produced by methods of `Element`."""
+    element.name = "dirty:element"
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", category=DirtyNameWarning)
+
+        _ = element.clone()
+        _ = element.split(torch.tensor(1.0))
+        _ = element.merge(element.clone())
+
+
+@pytest.mark.for_every_element("original")
+def test_element_merging_metadata(original):
+    """
+    Test that metadata is properly merged with its element and the original elements are
+    not modified.
+    """
+    other = original.clone()
+
+    original.metadata = {"original": None}
+    other.metadata = {"other": None}
+
+    merged_element = original.merge(other)
+
+    # If `None`, the element does not support merging, which passes the test
+    if merged_element is not None:
+        assert original.metadata == {"original": None}
+        assert other.metadata == {"other": None}
+        assert merged_element.metadata == {"original": None, "other": None}

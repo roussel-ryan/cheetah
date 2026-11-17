@@ -43,6 +43,10 @@ Accelerator
     :members:
     :undoc-members:
 
+.. automodule:: accelerator.patch
+    :members:
+    :undoc-members:
+
 .. automodule:: accelerator.quadrupole
     :members:
     :undoc-members:
@@ -68,10 +72,6 @@ Accelerator
     :undoc-members:
 
 .. automodule:: accelerator.space_charge_kick
-    :members:
-    :undoc-members:
-
-.. automodule:: accelerator.superimposed
     :members:
     :undoc-members:
 

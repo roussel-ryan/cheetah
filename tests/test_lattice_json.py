@@ -1,7 +1,10 @@
+import warnings
+
 import pytest
 import torch
 
 import cheetah
+from cheetah.utils import DirtyNameWarning
 
 from .resources import ARESlatticeStage3v1_9 as ares
 
@@ -62,14 +65,50 @@ def test_save_and_reload_custom_transfer_map(tmp_path):
     # segment was tested in a different test.
     reloaded_custom_transfer_map_element = reloaded_segment.elements[0]
 
-    assert torch.allclose(
+    torch.testing.assert_close(
         custom_transfer_map_element.predefined_transfer_map,
         reloaded_custom_transfer_map_element.predefined_transfer_map,
     )
-    assert torch.allclose(
+    torch.testing.assert_close(
         custom_transfer_map_element.length, reloaded_custom_transfer_map_element.length
     )
     assert custom_transfer_map_element.name == reloaded_custom_transfer_map_element.name
+
+
+def test_save_and_reload_patch(tmp_path):
+    """
+    Test that saving and reloading a `Patch` works. `Patch` never appears in the ARES
+    lattice and must therefore be tested separately.
+    """
+    original_patch = cheetah.Patch(
+        position_offset=torch.tensor([0.1, 0.2, 0.3]),
+        time_offset=torch.tensor(1.0e-9),
+        pitch=torch.tensor([0.05, -0.05]),
+        tilt=torch.tensor(0.2),
+        energy_offset=torch.tensor(1.0e6),
+        drift_to_exit=False,
+        name="my_patch",
+    )
+    original_segment = cheetah.Segment([original_patch], name="test_segment")
+    original_segment.to_lattice_json(tmp_path / "patch_lattice.json")
+
+    reloaded_segment = cheetah.Segment.from_lattice_json(
+        tmp_path / "patch_lattice.json"
+    )
+    reloaded_patch = reloaded_segment.my_patch
+
+    assert isinstance(reloaded_patch, cheetah.Patch)
+    assert reloaded_patch.name == original_patch.name
+    torch.testing.assert_close(
+        reloaded_patch.position_offset, original_patch.position_offset
+    )
+    torch.testing.assert_close(reloaded_patch.time_offset, original_patch.time_offset)
+    torch.testing.assert_close(reloaded_patch.pitch, original_patch.pitch)
+    torch.testing.assert_close(reloaded_patch.tilt, original_patch.tilt)
+    torch.testing.assert_close(
+        reloaded_patch.energy_offset, original_patch.energy_offset
+    )
+    assert reloaded_patch.drift_to_exit == original_patch.drift_to_exit
 
 
 def test_save_and_reload_metadata(tmp_path):
@@ -122,79 +161,30 @@ def test_desired_dtype(tmp_path, desired_dtype: torch.dtype):
     )
 
 
-@pytest.mark.parametrize(
-    "superimposed_kind",
-    ["single_bpm", "segment_of_bpms"],
-)
-def test_save_and_reload_superimposed_element(tmp_path, superimposed_kind: str):
+@pytest.mark.parametrize("sanitize_names", [None, True, False])
+def test_lattice_json_sanitize_name_warning(tmp_path, sanitize_names):
     """
-    Test that saving and reloading a segment containing an element with other elements
-    as its properties (here a `Superimposed` element) works correctly and preserves the
-    recursively nested sub-elements.
+    Test that the `DirtyNameWarning` is suppressed by the `sanitize_name` argument.
     """
-    base_element = cheetah.Quadrupole(
-        length=torch.tensor(1.0), k1=torch.tensor(4.2), name="quadrupole_base"
+    original_segment = cheetah.Segment(
+        elements=[
+            cheetah.Drift(
+                length=torch.tensor(1.0), name="dirty:drift#1", sanitize_name=False
+            )
+        ],
+        name="dirty!segment",
+        sanitize_name=False,
     )
-    if superimposed_kind == "single_bpm":
-        superimposed_element = cheetah.BPM(is_active=True, name="bpm_superimposed")
+    original_segment.to_lattice_json(tmp_path / "dirty_lattice.json")
+
+    if sanitize_names is None:
+        with pytest.warns(DirtyNameWarning):
+            _ = cheetah.Segment.from_lattice_json(
+                tmp_path / "dirty_lattice.json", sanitize_names=sanitize_names
+            )
     else:
-        superimposed_element = cheetah.Segment(
-            elements=[
-                cheetah.BPM(is_active=True, name="bpm_superimposed_1"),
-                cheetah.BPM(is_active=False, name="bpm_superimposed_2"),
-            ],
-            name="bpm_superimposed_segment",
-        )
-    superimposed = cheetah.Superimposed(
-        base_element=base_element,
-        superimposed_element=superimposed_element,
-        name="my_superimposed",
-    )
-
-    original_segment = cheetah.Segment([superimposed], name="superimposed_segment")
-
-    original_segment.to_lattice_json(
-        str(tmp_path / "superimposed_lattice.json"),
-        title="Superimposed LatticeJSON",
-        info="Save and reload test with nested elements",
-    )
-
-    reloaded_segment = cheetah.Segment.from_lattice_json(
-        str(tmp_path / "superimposed_lattice.json")
-    )
-
-    assert len(reloaded_segment.elements) == 1
-    reloaded_superimposed = reloaded_segment.elements[0]
-
-    assert isinstance(reloaded_superimposed, cheetah.Superimposed)
-    assert reloaded_superimposed.name == "my_superimposed"
-
-    # Check base element
-    assert isinstance(reloaded_superimposed.base_element, cheetah.Quadrupole)
-    assert reloaded_superimposed.base_element.name == "quadrupole_base"
-    assert torch.allclose(reloaded_superimposed.base_element.length, torch.tensor(1.0))
-    assert torch.allclose(reloaded_superimposed.base_element.k1, torch.tensor(4.2))
-
-    # Check superimposed element
-    if superimposed_kind == "single_bpm":
-        assert isinstance(reloaded_superimposed.superimposed_element, cheetah.BPM)
-        assert reloaded_superimposed.superimposed_element.name == "bpm_superimposed"
-        assert reloaded_superimposed.superimposed_element.is_active is True
-    else:
-        assert isinstance(reloaded_superimposed.superimposed_element, cheetah.Segment)
-        assert (
-            reloaded_superimposed.superimposed_element.name
-            == "bpm_superimposed_segment"
-        )
-        assert len(reloaded_superimposed.superimposed_element.elements) == 2
-
-        first_bpm = reloaded_superimposed.superimposed_element.elements[0]
-        second_bpm = reloaded_superimposed.superimposed_element.elements[1]
-
-        assert isinstance(first_bpm, cheetah.BPM)
-        assert first_bpm.name == "bpm_superimposed_1"
-        assert first_bpm.is_active is True
-
-        assert isinstance(second_bpm, cheetah.BPM)
-        assert second_bpm.name == "bpm_superimposed_2"
-        assert second_bpm.is_active is False
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DirtyNameWarning)
+            _ = cheetah.Segment.from_lattice_json(
+                tmp_path / "dirty_lattice.json", sanitize_names=sanitize_names
+            )

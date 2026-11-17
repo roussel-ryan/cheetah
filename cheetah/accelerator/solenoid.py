@@ -9,6 +9,7 @@ from cheetah.utils import (
     UniqueNameGenerator,
     cache_transfer_map,
     compute_relativistic_factors,
+    merge_element_names,
 )
 
 generate_unique_name = UniqueNameGenerator(prefix="unnamed_element")
@@ -33,7 +34,7 @@ class Solenoid(Element):
     :param metadata: Dictionary of arbitrary, serialisable annotations attached to the
         element (e.g. control-system addresses or PVs). This information is *not* used
         in simulation and may contain any extra data the user wants to store along with
-        the lattice. See :doc:`/examples/including_metadata` for more information.
+        the lattice. See :doc:`/getting_started/control_systems` for more information.
     :param device: Device on which to create the element's tensors.
     :param dtype: Data type of the element's tensors.
     """
@@ -131,10 +132,29 @@ class Solenoid(Element):
                 length=split_length,
                 k=self.k,
                 misalignment=self.misalignment,
+                name=f"{self.name}_split_{i}",
+                sanitize_name=False,
+                metadata=self.metadata,
                 **factory_kwargs,
             )
-            for _ in range(num_splits)
+            for i in range(num_splits)
         ]
+
+    def merge(self, other: "Solenoid") -> "Solenoid | None":
+        if not self.misalignment.equal(other.misalignment):
+            return None
+
+        return self.__class__(
+            length=self.length + other.length,
+            k=(self.k * self.length + other.k * other.length)
+            / (self.length + other.length),
+            misalignment=self.misalignment,
+            name=merge_element_names(self.name, other.name),
+            sanitize_name=False,
+            metadata={**other.metadata, **self.metadata},
+            dtype=self.length.dtype,
+            device=self.length.device,
+        )
 
     def plot(
         self, s: float, vector_idx: tuple | None = None, ax: plt.Axes | None = None
